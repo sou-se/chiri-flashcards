@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>地理フラッシュカード</title>
+<style>
+  :root {
+    --bg: #fdf8f0;
+    --ink: #2b2a33;
+    --muted: #7a7684;
+    --card: #ffffff;
+    --front: #3b5bdb;
+    --back: #f08c00;
+    --ok: #2f9e44;
+    --ng: #e03131;
+    --line: #e8e2d6;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  button { -webkit-appearance: none; appearance: none; outline: none; font: inherit; cursor: pointer; border: none; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom));
+    min-height: 100vh;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; text-align: center; }
+  .sub { text-align: center; color: var(--muted); margin: 0 0 24px; font-size: .9rem; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* 単元選択 */
+  .deck-btn {
+    display: flex; justify-content: space-between; align-items: center;
+    width: 100%; background: var(--card); border: 2px solid var(--line);
+    border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; text-align: left;
+    color: var(--ink); transition: transform .1s;
+  }
+  .deck-btn:active { transform: scale(.98); }
+  .deck-btn .name { font-weight: bold; font-size: 1.1rem; }
+  .deck-btn .info { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+  .deck-btn .badge { font-size: .85rem; font-weight: bold; color: var(--ok); white-space: nowrap; margin-left: 8px; }
+  .deck-btn.all { border-color: var(--front); }
+  .opts { display: flex; gap: 10px; justify-content: center; margin: 20px 0 8px; flex-wrap: wrap; }
+  .toggle {
+    background: var(--card); border: 2px solid var(--line); border-radius: 999px;
+    padding: 8px 16px; font-size: .9rem; color: var(--ink);
+  }
+  .toggle.on { background: var(--front); border-color: var(--front); color: #fff; }
+  .reset { display: block; margin: 24px auto 0; background: none; color: var(--muted); font-size: .85rem; text-decoration: underline; }
+
+  /* カード */
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .back-link { background: none; color: var(--muted); font-size: .95rem; padding: 6px 0; }
+  .count { font-weight: bold; color: var(--muted); }
+  .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin-bottom: 20px; }
+  .bar > div { height: 100%; background: var(--front); width: 0; transition: width .3s; }
+
+  .scene { perspective: 1200px; }
+  .card {
+    position: relative; width: 100%; min-height: 320px;
+    transform-style: preserve-3d; transition: transform .5s; cursor: pointer;
+  }
+  .card.flipped { transform: rotateY(180deg); }
+  .face {
+    position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    border-radius: 22px; padding: 28px 24px; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,.08);
+  }
+  .face .tag {
+    position: absolute; top: 14px; left: 16px; font-size: .75rem; font-weight: bold;
+    padding: 4px 10px; border-radius: 99px;
+  }
+  .front { background: var(--card); border: 3px solid var(--front); }
+  .front .tag { background: #e7ecff; color: var(--front); }
+  .front .q { font-size: 1.25rem; line-height: 1.7; }
+  .front .hint { color: var(--muted); font-size: .85rem; margin-top: 20px; }
+  .backface { background: #fff9ef; border: 3px solid var(--back); transform: rotateY(180deg); }
+  .backface .tag { background: #fff0d6; color: #c46a00; }
+  .backface .a { font-size: 2rem; font-weight: bold; color: #c46a00; line-height: 1.4; }
+  .backface .ruby { font-size: .95rem; color: var(--muted); margin-top: 4px; }
+  .backface .goro { margin-top: 14px; background: #fff0d6; color: #a85a00; border-radius: 12px; padding: 8px 14px; font-weight: bold; font-size: 1rem; }
+  .backface .note { font-size: .95rem; line-height: 1.7; margin-top: 18px; color: var(--ink); text-align: left; }
+
+  .judge { display: flex; gap: 12px; margin-top: 20px; visibility: hidden; }
+  .judge.show { visibility: visible; }
+  .judge button { flex: 1; padding: 18px 0; border-radius: 16px; font-size: 1.1rem; font-weight: bold; color: #fff; }
+  .judge .ng { background: var(--ng); }
+  .judge .ok { background: var(--ok); }
+  .flip-btn { display: block; width: 100%; margin-top: 20px; padding: 18px 0; border-radius: 16px; background: var(--front); color: #fff; font-size: 1.1rem; font-weight: bold; }
+  .flip-btn.hide { display: none; }
+
+  /* 結果 */
+  .result-box { background: var(--card); border-radius: 22px; padding: 28px 20px; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.06); }
+  .score { font-size: 3rem; font-weight: bold; color: var(--front); margin: 8px 0; }
+  .msg { font-size: 1.1rem; margin-bottom: 4px; }
+  .review { margin-top: 24px; }
+  .review h2 { font-size: 1.1rem; margin: 0 0 10px; }
+  .review-item { background: var(--card); border-left: 5px solid var(--ng); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .review-item .rq { font-size: .95rem; line-height: 1.6; }
+  .review-item .ra { font-weight: bold; color: #c46a00; margin-top: 4px; }
+  .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+  .btn { padding: 16px 0; border-radius: 16px; font-size: 1.05rem; font-weight: bold; }
+  .btn.primary { background: var(--ng); color: #fff; }
+  .btn.secondary { background: var(--front); color: #fff; }
+  .btn.plain { background: var(--card); color: var(--ink); border: 2px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 単元選択 -->
+  <section id="eraScreen" class="screen active">
+    <h1>🗾 地理 フラッシュカード</h1>
+    <p class="sub">勉強する単元をえらぼう</p>
+    <div id="eras"></div>
+  </section>
+
+  <!-- 単元選択 -->
+  <section id="home" class="screen">
+    <button class="back-link" id="eraBackBtn">← 単元をえらぶ</button>
+    <h1 id="eraTitle" style="font-size:1.2rem"></h1>
+    <p class="sub">カードをタップして答えを確認しよう</p>
+    <div id="decks"></div>
+    <div class="opts">
+      <button class="toggle on" id="shuffleToggle">🔀 シャッフル</button>
+      <button class="toggle" id="reverseToggle">🔁 答え→問題</button>
+    </div>
+    <button class="reset" id="resetBtn">覚えた記録をリセット</button>
+  </section>
+
+  <!-- カード画面 -->
+  <section id="study" class="screen">
+    <div class="top">
+      <button class="back-link" id="quitBtn">← もどる</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="scene">
+      <div class="card" id="card">
+        <div class="face front">
+          <span class="tag" id="frontTag"></span>
+          <div class="q" id="frontText"></div>
+          <div class="hint">タップでうら返す</div>
+        </div>
+        <div class="face backface">
+          <span class="tag">こたえ</span>
+          <div class="a" id="backText"></div>
+          <div class="ruby" id="backRuby"></div>
+          <div class="goro" id="backGoro"></div>
+          <div class="note" id="backNote"></div>
+        </div>
+      </div>
+    </div>
+    <button class="flip-btn" id="flipBtn">答えを見る</button>
+    <div class="judge" id="judge">
+      <button class="ng" id="ngBtn">😣 まだ</button>
+      <button class="ok" id="okBtn">😊 覚えた</button>
+    </div>
+  </section>
+
+  <!-- 結果 -->
+  <section id="result" class="screen">
+    <div class="result-box">
+      <div class="msg" id="resultMsg"></div>
+      <div class="score" id="resultScore"></div>
+      <div id="resultSub" style="color:var(--muted)"></div>
+    </div>
+    <div class="review" id="review"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="retryNgBtn">😣「まだ」のカードだけもう一度</button>
+      <button class="btn secondary" id="retryAllBtn">🔀 全部もう一度</button>
+      <button class="btn plain" id="homeBtn">単元選択にもどる</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ===== カードデータ =====
+// 新しい単元は ERAS に1ブロック追加するだけでOK
+const ERAS = [
+  {
+    id: "kankyo1",
+    name: "🏭 17 環境問題(1) 公害と環境問題への取り組み",
+    source: "p.132〜135",
+    decks: [
+      {
+        id: "goku",
+        name: "🔑 重要語句",
+        cards: [
+          { q: "工場廃水や産業廃棄物の有害物質や農薬によって、土がよごれる公害は？", a: "土壌汚染", r: "どじょうおせん", n: "公害は大きく7つ：騒音・振動・大気汚染・悪臭・水質汚濁・土壌汚染・地盤沈下。" },
+          { q: "工場の排煙や自動車の排出ガスによって、空気がよごれる公害は？", a: "大気汚染", r: "たいきおせん", n: "光化学スモッグや酸性雨の原因になる。" },
+          { q: "工場廃水や生活排水、原油の流出事故などで、川や海の水がよごれる公害は？", a: "水質汚濁", r: "すいしつおだく", n: "「汚濁」の字に注意。赤潮やアオコの原因になる。" },
+          { q: "工場や畜産場、下水、ごみなどからいやなにおいが出る公害は？", a: "悪臭", r: "あくしゅう", n: "苦情のうちわけでは騒音・大気汚染についで多い。" },
+          { q: "地下水のくみ上げすぎなどにより、土地が沈む公害は？", a: "地盤沈下", r: "じばんちんか", n: "一度沈んだ土地はもとにもどらない。" },
+          { q: "大気汚染が進むと、日差しが強く気温の高い日に発生し、目やのどが痛くなるものは？", a: "光化学スモッグ", r: "こうかがくすもっぐ", n: "排出ガスが日光（紫外線）と反応してできる。" },
+          { q: "大気汚染の影響で雨の性質が変わり、森が枯れるなどの被害を出す雨は？", a: "酸性雨", r: "さんせいう", n: "湖の生物が死んだり、大理石の像がとけたりもする。" },
+          { q: "水質汚濁が進み、プランクトンが異常に発生して海や川が赤く変色する現象は？", a: "赤潮", r: "あかしお", n: "瀬戸内海で多い。琵琶湖では緑色の「アオコ」。" },
+          { q: "明治時代、日本初の公害問題がおきた足尾銅山のある県は？", a: "栃木県", r: "とちぎけん", n: "足尾銅山鉱毒事件（1890年ごろ）。" },
+          { q: "足尾銅山鉱毒事件を解決するために活やくした衆議院議員は？", a: "田中正造", r: "たなかしょうぞう", n: "天皇に直訴しようとしたことでも有名。" },
+          { q: "公害を防ぐために、1967年に制定された法律は？", a: "公害対策基本法", r: "こうがいたいさくきほんほう", n: "1993年に環境基本法ができて廃止された。" },
+          { q: "公害対策基本法を廃止して1993年に制定された、地球の環境保全の考え方も示した法律は？", a: "環境基本法", r: "かんきょうきほんほう", n: "国内の公害だけでなく、地球環境問題にも対応。" },
+          { q: "現在、公害や環境問題に取り組んでいる国の役所は？", a: "環境省", r: "かんきょうしょう", n: "1971年に環境庁 → 2001年に環境省になった。" },
+          { q: "大きな工事の前に、環境への影響を事前に予測・評価する手続きを定めた法律は？", a: "環境アセスメント法", r: "かんきょうあせすめんとほう", n: "1997年に制定。アセスメント＝評価。" },
+          { q: "ごみを低温で燃やすと発生する、もう毒で発がん性のある物質は？", a: "ダイオキシン", r: "だいおきしん", n: "産業廃棄物の不法投棄とならぶごみ問題。" },
+          { q: "3R：資源として再生利用することをカタカナで？", a: "リサイクル", r: "Recycle", n: "例：ごみを正しく分別する。" },
+          { q: "3R：ごみを減らすことをカタカナで？", a: "リデュース", r: "Reduce", n: "例：長く使える質の良い製品を買う。" },
+          { q: "3R：再使用することをカタカナで？", a: "リユース", r: "Reuse", n: "例：リターナブル容器、フリーマーケット。" },
+          { q: "牛乳びんのように、使用後に回収してくり返し使える容器を（　　）容器という。", a: "リターナブル", r: "りたーなぶる", n: "リユース（再使用）の例。" },
+          { q: "家電リサイクル法の4品目で誤っているのは？\n洗濯機／エアコン／テレビ／冷蔵庫／電子レンジ", a: "電子レンジ", r: "でんしれんじ", n: "4品目はテレビ・エアコン・冷蔵庫・洗濯機。" },
+          { q: "環境に配慮してつくられた製品につけられるマークは？", a: "エコマーク", r: "えこまーく", n: "地球を両手でつつむデザイン。" },
+          { q: "古紙を原料にした製品につけられるマークは？", a: "グリーンマーク", r: "ぐりーんまーく", n: "木のデザインのマーク。" },
+        ]
+      },
+      {
+        id: "kougai",
+        name: "🏭 公害",
+        cards: [
+          { q: "産業活動や日常生活によって環境が破壊され、さまざまな被害が生じることを何という？", a: "公害", r: "こうがい", n: "国は公害を大きく7つに分けている。" },
+          { q: "国は公害を大きくいくつに分けている？", a: "7つ", r: "", n: "騒音・振動・大気汚染・悪臭・水質汚濁・土壌汚染・地盤沈下。" },
+          { q: "航空機・自動車・工場・工事などによる、うるさい音やひどいゆれの公害は？", a: "騒音・振動", r: "そうおん・しんどう", n: "公害の苦情で最も多いのは騒音（24.2％）。" },
+          { q: "1950年代後半から70年代に重化学工業が発展し、各地で公害が発生した時期は？", a: "高度経済成長期", r: "こうどけいざいせいちょうき", n: "経済成長を優先した結果、公害が発生した。" },
+          { q: "熊本・鹿児島県の水俣湾周辺でおきた四大公害病は？", a: "水俣病", r: "みなまたびょう", n: "化学工場から出た有機水銀が魚を汚染。1956年に公式確認。" },
+          { q: "水俣病・新潟水俣病の原因物質は？", a: "有機水銀", r: "ゆうきすいぎん", n: "手足がしびれ、死にいたることも。" },
+          { q: "新潟水俣病が発生した川は？", a: "阿賀野川（新潟県）下流域", r: "あがのがわ", n: "1964年に発生。水俣病と同じ病気。" },
+          { q: "富山県の神通川下流域でおきた四大公害病は？", a: "イタイイタイ病", r: "いたいいたいびょう", n: "上流の神岡鉱山（岐阜県）からカドミウムが流れ出た。" },
+          { q: "イタイイタイ病の原因物質は？", a: "カドミウム", r: "かどみうむ", n: "骨がもろくなり、はげしい痛みをともなった。" },
+          { q: "三重県でおきた、ぜんそくの四大公害病は？", a: "四日市ぜんそく", r: "よっかいちぜんそく", n: "石油化学コンビナートの排煙が原因。1960年ごろ患者が増えた。" },
+          { q: "四日市ぜんそくの原因物質は？", a: "亜硫酸ガス", r: "ありゅうさんがす", n: "のどが痛くなり、せきがひどくなる。" },
+          { q: "四大公害病の裁判の結果は？", a: "患者側（被害者）の訴えが認められた", r: "", n: "1967〜73年。裁判所は会社の責任を認め、賠償金の支払いを命じた。" },
+          { q: "1971年に発足した、環境問題を担当する国の役所は？", a: "環境庁", r: "かんきょうちょう", n: "2001年に環境省になった。" },
+          { q: "水銀の生産・使用・貿易を規制する条約は？", a: "水俣条約", r: "みなまたじょうやく", n: "2013年採択、2017年発効。" },
+          { q: "健康に影響を及ぼす微小粒子で、中国から日本へ飛来しているものは？", a: "PM2.5", r: "ぴーえむにてんご", n: "とても小さいので肺の奥まで入りこむ。" },
+          { q: "瀬戸内海の赤潮に対して、琵琶湖で発生するものは？", a: "アオコ", r: "あおこ", n: "水質汚濁でプランクトンが増え、水が緑色になる。" },
+        ]
+      },
+      {
+        id: "junkan",
+        name: "♻️ 循環型社会",
+        cards: [
+          { q: "大量生産・大量消費・大量廃棄の生活で、深刻化した環境問題は？", a: "ごみ問題", r: "ごみもんだい", n: "埋め立て地の不足、不法投棄、ダイオキシンの発生など。" },
+          { q: "再使用・再生利用を進めて資源を有効に利用し、環境への負担を減らしていく社会は？", a: "循環型社会", r: "じゅんかんがたしゃかい", n: "「循環」とは、ひと回りしてもとにもどることをくり返すこと。" },
+          { q: "循環型社会をつくるのに必要な3つの考え方をまとめて何という？", a: "3R", r: "すりーあーる", n: "リデュース・リユース・リサイクル。" },
+          { q: "3Rに2つを加えた5Rで、加わる2つは？", a: "リフューズ・リペア", r: "Refuse・Repair", n: "リフューズ＝ごみになるものを受け取らない、リペア＝修理して使う。" },
+          { q: "レジ袋を買わない、余分な包装を断ることは5Rのどれ？", a: "リフューズ", r: "Refuse", n: "ごみになるものを受け取らない。" },
+          { q: "修理して使うことは5Rのどれ？", a: "リペア", r: "Repair", n: "こわれてもすぐ捨てない。" },
+          { q: "リサイクルショップやフリーマーケットの利用は3Rのどれ？", a: "リユース", r: "Reuse", n: "まだ使えるものを他の人が再使用する。" },
+          { q: "2000年に制定された、循環型社会をつくるための基本的なしくみを決めた法律は？", a: "循環型社会形成推進基本法", r: "じゅんかんがたしゃかいけいせいすいしんきほんほう", n: "つくった会社には再資源化の責任、使う人には分別回収への協力と費用負担。" },
+          { q: "ペットボトル・プラスチック容器・包装紙などのリサイクル法は？", a: "容器包装リサイクル法", r: "ようきほうそうりさいくるほう", n: "種類別のリサイクル法の1つ。" },
+          { q: "レストランやスーパーからの生ごみ・残飯などのリサイクル法は？", a: "食品リサイクル法", r: "しょくひんりさいくるほう", n: "" },
+          { q: "コンクリート・アスファルト・木材などのリサイクル法は？", a: "建設リサイクル法", r: "けんせつりさいくるほう", n: "" },
+          { q: "パソコン・携帯電話・デジタルカメラなどのリサイクル法は？", a: "小型家電リサイクル法", r: "こがたかでんりさいくるほう", n: "テレビ・エアコン・冷蔵庫・洗濯機は「家電リサイクル法」。" },
+          { q: "使い終わったびんを細かくくだいたもの（再生びんの原料）は？", a: "カレット", r: "かれっと", n: "かん → 再生地金、ペットボトル → ペレット → 服やバッグ。" },
+          { q: "ごみの分別に役立つ、アルミ・スチール・プラ・PETなどのマークは？", a: "識別表示マーク", r: "しきべつひょうじまーく", n: "エコマークなどは再生利用品を選ぶ目安。" },
+          { q: "ペットボトルの回収率は、ここ数年の間何%以上を維持している？", a: "80%以上", r: "", n: "1999年は約20%から大きくのびた。" },
+        ]
+      },
+      {
+        id: "shiryo",
+        name: "📊 資料・発展問題",
+        cards: [
+          { q: "四大公害病が発生して全国的に問題になった時期は？\nア 1890年ごろ／イ 1930〜40年代／ウ 1950〜70年代／エ 1990〜2000年代", a: "ウ 1950年代〜1970年代", r: "", n: "高度経済成長期。アの1890年ごろは足尾銅山鉱毒事件。" },
+          { q: "地図：水俣病が発生した場所（九州）は、ア〜エのどれ？", a: "エ", r: "", n: "熊本・鹿児島県の水俣湾周辺。" },
+          { q: "地図：イタイイタイ病が発生した場所（富山県）は、ア〜エのどれ？", a: "イ", r: "", n: "神通川下流域。日本海側の中部地方。" },
+          { q: "地図：四日市ぜんそくが発生した場所（三重県）は、ア〜エのどれ？", a: "ウ", r: "", n: "伊勢湾ぞいの四日市市。" },
+          { q: "地図：新潟水俣病が発生した場所（新潟県）は、ア〜エのどれ？", a: "ア", r: "", n: "阿賀野川下流域。イ（富山）より北東。" },
+          { q: "四大公害病の原因物質：X（水俣病・新潟水俣病）、Y（イタイイタイ病）、Z（四日市ぜんそく）は？", a: "X 有機水銀\nY カドミウム\nZ 亜硫酸ガス", r: "", n: "「水銀＝水俣」「カドミウム＝イタイイタイ」「ガス＝ぜんそく」と結びつけよう。" },
+          { q: "公害に対する苦情のうちわけ（2020年度）で、最も多い24.2%の公害は？", a: "騒音", r: "そうおん", n: "2位は大気汚染（21.0%）、3位は悪臭（13.8%）。" },
+          { q: "PETボトルリサイクル推奨マークは、何からリサイクルされたものを示す？\nA 牛乳パック／B ペットボトル／C スチールかん", a: "B ペットボトル", r: "", n: "問題の資料1「あ」のマーク。" },
+          { q: "「R」の牛乳パック再利用マークは、何からリサイクルされたものを示す？\nA 牛乳パック／B ペットボトル／C スチールかん", a: "A 牛乳パック", r: "", n: "問題の資料1「い」のマーク。" },
+          { q: "回収率のグラフで、1999年ごろ約20%から急にのびて80%以上になったのは何？", a: "ペットボトル（ウ）", r: "", n: "アはスチールかん（はじめから高い）、イは古紙。" },
+          { q: "リデュースの具体例を2つ選ぶと？\nア 食材は使いきれる量だけ買い残さず食べる／イ マイバッグをもっていく／ウ 着られなくなった服をゆずる／エ ごみをきちんと分別する", a: "ア・イ", r: "", n: "ウはリユース、エはリサイクル。" },
+        ]
+      },
+      {
+        id: "kijutsu",
+        name: "✏️ 記述問題",
+        cards: [
+          { q: "循環型社会とはどのような社会ですか。簡単に答えなさい。", a: "再使用や再生利用を進めて、限りある資源を有効に利用し、環境への負担を減らしていこうとする社会。", r: "", n: "「再使用・再生利用」「資源を有効に利用」「環境への負担を減らす」をキーワードに書こう。", long: true },
+        ]
+      },
+    ]
+  },
+  {
+    id: "kankyo2",
+    name: "🌏 18 環境問題(2) 地球環境をめぐる動き",
+    source: "p.138〜141",
+    decks: [
+      {
+        id: "goku",
+        name: "🔑 重要語句",
+        cards: [
+          { q: "二酸化炭素など、地球温暖化の原因となっているものは？", a: "温室効果ガス", r: "おんしつこうかがす", n: "熱を宇宙ににがしにくくするガス。化石燃料の使用や森林の減少で増えた。" },
+          { q: "工場の煙や自動車の排気ガス中の物質が原因で、森林が枯れたり湖の生物が死んだりする雨は？", a: "酸性雨", r: "さんせいう", n: "大理石の像がとけだす被害もある。" },
+          { q: "砂漠化のおもな原因は、過度の耕作や（　　）、かんばつなど。", a: "放牧", r: "ほうぼく", n: "家畜が草を食べつくし、土地があれてしまう。" },
+          { q: "オゾン層の破壊の原因となる、冷蔵庫やエアコンなどに使われてきたガスは？", a: "フロンガス", r: "ふろんがす", n: "オゾン層がこわれると、有害な紫外線が地上に直接届く。" },
+          { q: "東南アジアやアマゾン川流域などでは、輸出のための森林伐採などで（　　）林の破壊が進んでいる。", a: "熱帯", r: "ねったい", n: "熱帯林がへると、野生の動植物が絶滅する危険が高くなる。" },
+          { q: "海洋汚染の原因の1つとして、ストローやビニール袋などの（　　）ごみの流出が問題になっている。", a: "プラスチック", r: "ぷらすちっく", n: "細かくなったものを「マイクロプラスチック」という。" },
+          { q: "1972年、「かけがえのない地球」をテーマにストックホルムで開かれた、世界最初の環境の国際会議は？", a: "国連人間環境会議", r: "こくれんにんげんかんきょうかいぎ", n: "「人間環境宣言」を採択し、UNEP（国連環境計画）の設立につながった。" },
+          { q: "1992年、ブラジルのリオデジャネイロで開かれた国連環境開発会議を、一般に何という？", a: "地球サミット", r: "ちきゅうさみっと", n: "「持続可能な開発」の考えのもと、アジェンダ21を採択。" },
+          { q: "環境を守りながら開発を進める（　　）可能な社会の実現は、国際的な課題。", a: "持続", r: "じぞく", n: "「持続可能な開発」「持続可能な開発目標（SDGs）」とセットで覚えよう。" },
+          { q: "1997年の地球温暖化防止京都会議で採択された、温室効果ガスの削減目標を示したものは？", a: "京都議定書", r: "きょうとぎていしょ", n: "COP3で採択。「議定書」の字に注意。" },
+          { q: "京都議定書で温室効果ガスの排出削減を義務づけられたのは（　　）国のみ。", a: "先進", r: "せんしん", n: "中国などは対象外で、アメリカも脱退するなどの問題があった。" },
+          { q: "2015年に採択された、地球温暖化対策の新たな協定は？", a: "パリ協定", r: "ぱりきょうてい", n: "COP21で採択。2016年発効。" },
+          { q: "パリ協定では京都議定書と異なり、（　　）国をふくむすべての加盟国が削減目標を設定した。", a: "発展途上", r: "はってんとじょう", n: "削減状況を報告する検証制度も導入された。" },
+          { q: "「特に水鳥の生息地として国際的に重要な湿地に関する条約」は、採択された地名から何とよばれる？", a: "ラムサール条約", r: "らむさーるじょうやく", n: "1971年、イランのラムサールで採択。" },
+          { q: "人々が資金を出し合って土地を買い取り、自然環境や歴史的な建物を保存する取り組みは？", a: "ナショナルトラスト運動", r: "なしょなるとらすとうんどう", n: "イギリスで始まった。日本では天神崎（和歌山県）や知床半島（北海道）など。" },
+          { q: "世界遺産の登録を行っている国際連合の機関は？（カタカナ4文字）", a: "ユネスコ", r: "UNESCO", n: "国連教育科学文化機関。" },
+          { q: "ユネスコは、演劇や舞踊、儀式や祭礼などの（　　）を保護する取り組みも行っている。", a: "無形文化遺産", r: "むけいぶんかいさん", n: "形のない芸能・祭礼・食事（和食など）が対象。" },
+          { q: "日本の世界遺産のうち、広島県にあり「負の遺産」とよばれているものは？", a: "原爆ドーム", r: "げんばくどーむ", n: "戦争の悲惨さを伝えるための世界遺産。" },
+          { q: "知床、白神山地、小笠原諸島、屋久島、奄美大島・徳之島ほかの5件は、世界（　　）遺産。", a: "自然", r: "しぜん", n: "世界遺産には自然遺産・文化遺産・複合遺産がある。" },
+        ]
+      },
+      {
+        id: "mondai",
+        name: "🔥 さまざまな地球環境問題",
+        cards: [
+          { q: "地球温暖化で北極圏などの氷がとけると、何が上昇する？", a: "海水面", r: "かいすいめん", n: "南太平洋の島や世界の低地が水没するおそれがある。" },
+          { q: "地球温暖化がおもな原因となる、高温・熱波・かんばつ・洪水などを何という？", a: "異常気象", r: "いじょうきしょう", n: "生態系や農作物への影響も大きい。" },
+          { q: "地球温暖化の原因として、温室効果ガスが増えるほかに何が減っている？", a: "森林", r: "しんりん", n: "森林は二酸化炭素を吸収してくれる。" },
+          { q: "アフリカで砂漠化が進んでいる、世界最大の砂漠は？", a: "サハラ砂漠", r: "さはらさばく", n: "その周辺（サヘル地域）で砂漠化が進んでいる。" },
+          { q: "中国での砂漠化の進行で、日本への飛来が拡大しているものは？", a: "黄砂", r: "こうさ", n: "春に多く飛んでくる。" },
+          { q: "オゾン層がこわされると、太陽からの何が地上に直接届くようになる？", a: "紫外線", r: "しがいせん", n: "皮膚がんの危険性が高まる。" },
+          { q: "紫外線の目への影響を考えて、子どもたちにサングラスをかける指導をしている国は？", a: "オーストラリア", r: "おーすとらりあ", n: "南極上空のオゾンホールに近いため。" },
+          { q: "洗顔料・歯みがき粉などに使われ、海に流れ出して問題になっている細かいプラスチックは？", a: "マイクロプラスチック", r: "まいくろぷらすちっく", n: "海の生物が食べることで生態系に悪い影響が出る。" },
+          { q: "プラスチック製買い物袋（レジ袋）が有料になったのはいつ？", a: "2020年7月", r: "", n: "かわりにエコバッグが一般的になった。" },
+          { q: "酸性雨によって、とけだす被害が出ている石像の素材は？", a: "大理石", r: "だいりせき", n: "酸性の雨は石もとかしてしまう。" },
+        ]
+      },
+      {
+        id: "kyoryoku",
+        name: "🤝 国際的な協力",
+        cards: [
+          { q: "国連人間環境会議（1972年）が開かれた都市は？", a: "ストックホルム（スウェーデン）", r: "", n: "スローガンは「かけがえのない地球」。" },
+          { q: "国連人間環境会議で採択された宣言は？", a: "人間環境宣言", r: "にんげんかんきょうせんげん", n: "UNEP（国連環境計画）の設立につながった。" },
+          { q: "国連人間環境会議をきっかけに設立された国連の機関（アルファベット）は？", a: "UNEP（国連環境計画）", r: "ユネップ", n: "環境問題を担当する国連の機関。" },
+          { q: "地球サミット（1992年）が開かれた都市は？", a: "リオデジャネイロ（ブラジル）", r: "", n: "正式名は国連環境開発会議。" },
+          { q: "地球サミットで採択された、21世紀に向けた行動計画は？", a: "アジェンダ21", r: "あじぇんだ21", n: "「持続可能な開発」の考えのもとでつくられた。" },
+          { q: "現在の世代も将来の世代も利益がそこなわれないように、節度をもって進める開発は？", a: "持続可能な開発", r: "じぞくかのうなかいはつ", n: "地球サミットの基本の考え方。" },
+          { q: "京都議定書が採択された会議（1997年）を、アルファベットで何という？", a: "COP3", r: "こっぷすりー", n: "地球温暖化防止京都会議。" },
+          { q: "パリ協定が採択された会議（2015年）を、アルファベットで何という？", a: "COP21", r: "こっぷにじゅういち", n: "気候変動枠組条約第21回締約国会議。" },
+          { q: "パリ協定では、気温の上昇を産業革命前と比べて何℃より低くおさえることを目標とした？", a: "2℃", r: "", n: "発展途上国をふくむすべての加盟国が目標を設定した。" },
+          { q: "2015年の国連総会で採択された、2030年までの国際的な目標は？", a: "持続可能な開発目標（SDGs）", r: "えすでぃーじーず", n: "2016年〜2030年。17の目標がアイコンで示される。" },
+          { q: "SDGsの目標はいくつある？", a: "17", r: "", n: "例：4 質の高い教育、5 ジェンダー平等、13 気候変動、14 海の豊かさ。" },
+          { q: "野生動植物の保護を目的とした条約（1973年）は？", a: "ワシントン条約", r: "わしんとんじょうやく", n: "絶滅のおそれのある動植物の取り引きを規制する。" },
+          { q: "オゾン層保護を目的とした条約（1985年）は？", a: "ウィーン条約", r: "うぃーんじょうやく", n: "そのあとのモントリオール議定書でフロンガスを規制。" },
+          { q: "フロンガスの排出規制を定めたもの（1987年）は？", a: "モントリオール議定書", r: "もんとりおーるぎていしょ", n: "ウィーン条約（オゾン層保護）とセットで覚えよう。" },
+          { q: "有害廃棄物の輸出規制を定めた条約（1989年）は？", a: "バーゼル条約", r: "ばーぜるじょうやく", n: "有害なごみを他国に押しつけないためのきまり。" },
+        ]
+      },
+      {
+        id: "mamoru",
+        name: "🏞️ 自然・伝統を守る取り組み",
+        cards: [
+          { q: "日本の美しい自然を保護するため、環境大臣が指定し、環境省が維持・管理を行うものは？", a: "国立公園", r: "こくりつこうえん", n: "国が管理する自然公園。" },
+          { q: "ラムサール条約が採択された年と国は？", a: "1971年・イラン", r: "", n: "水鳥の生息地となる湿地を保護する条約。" },
+          { q: "ラムサール条約の日本最初の登録地で、タンチョウの生息地は？", a: "釧路湿原", r: "くしろしつげん", n: "北海道にある。" },
+          { q: "千葉県にあるラムサール条約登録地の干潟は？", a: "谷津干潟", r: "やつひがた", n: "東京湾にある干潟。渡り鳥が多く集まる。" },
+          { q: "ナショナルトラスト運動が始まった国は？", a: "イギリス", r: "", n: "人々が資金を出し合って自然や建物を守る。" },
+          { q: "和歌山県にある、日本のナショナルトラスト運動の例は？", a: "天神崎", r: "てんじんざき", n: "北海道の知床半島も有名な例。" },
+          { q: "世界遺産条約が採択された年と機関は？", a: "1972年・ユネスコ", r: "", n: "世界的に貴重な自然や建造物を人類共通の遺産として残すため。" },
+          { q: "世界遺産の3つの種類は？", a: "自然遺産・文化遺産・複合遺産", r: "", n: "芸能や祭礼などは「無形文化遺産」として別に保護。" },
+          { q: "青森県・秋田県にまたがるブナの原生林で、世界自然遺産の地域は？", a: "白神山地", r: "しらかみさんち", n: "1993年、屋久島とともに日本初の世界自然遺産に。" },
+          { q: "兵庫県にある、白い城で世界文化遺産の城は？", a: "姫路城", r: "ひめじじょう", n: "「白鷺城（しらさぎじょう）」ともよばれる。" },
+          { q: "北海道にある世界自然遺産の半島は？", a: "知床", r: "しれとこ", n: "ナショナルトラスト運動の例でもある。" },
+          { q: "すぎの原生林がある、鹿児島県の世界自然遺産の島は？", a: "屋久島", r: "やくしま", n: "樹齢数千年の「縄文杉」が有名。" },
+        ]
+      },
+      {
+        id: "shiryo",
+        name: "📊 資料・発展問題",
+        cards: [
+          { q: "温室効果ガス排出量割合のグラフ：1990年10.2% → 2019年28.2%に増えた国（X）は？", a: "中国", r: "ちゅうごく", n: "2019年は世界一の排出国。京都議定書では削減義務がなかった。" },
+          { q: "温室効果ガス排出量割合のグラフ：1990年22.0% → 2019年13.9%に減った国（Y）は？", a: "アメリカ", r: "", n: "割合は減ったが、今も世界2位の排出国。" },
+          { q: "世界の温室効果ガス総排出量は、1990年の232億tから2019年には何億tになった？", a: "376億t", r: "", n: "約1.6倍にふえている。" },
+          { q: "日本の温室効果ガス排出量の割合は、1990年4.6% → 2019年は何%？", a: "2.8%", r: "", n: "割合は下がっている。" },
+          { q: "SDGs：女性の賃金が低く、管理職の女性の割合も低い → どの目標？", a: "5 ジェンダー平等を実現しよう", r: "", n: "問題のアイコン「イ」。" },
+          { q: "SDGs：工場排水やプラスチックごみによる海洋汚染 → どの目標？", a: "14 海の豊かさを守ろう", r: "", n: "問題のアイコン「ア」。" },
+          { q: "SDGs：温室効果ガスの増加によるさまざまな自然災害 → どの目標？", a: "13 気候変動に具体的な対策を", r: "", n: "問題のアイコン「ウ」。" },
+          { q: "SDGs：女子が教育を受ける機会が少ない国や地域がある → どの目標？", a: "4 質の高い教育をみんなに", r: "", n: "問題のアイコン「エ」。" },
+          { q: "地図：北海道東部にあるラムサール条約登録地（①）は？", a: "釧路湿原", r: "くしろしつげん", n: "選択肢：天神崎・釧路湿原・白神山地・姫路城・谷津干潟" },
+          { q: "地図：関東（千葉県）にあるラムサール条約登録地（②）は？", a: "谷津干潟", r: "やつひがた", n: "東京湾ぞいの干潟。" },
+          { q: "地図：紀伊半島（和歌山県）にあるナショナルトラスト運動登録地（③）は？", a: "天神崎", r: "てんじんざき", n: "和歌山県田辺市。" },
+          { q: "地図：東北地方北部（青森・秋田）にある世界遺産（④）は？", a: "白神山地", r: "しらかみさんち", n: "世界自然遺産。" },
+          { q: "地図：近畿地方（兵庫県）にある世界遺産（⑤）は？", a: "姫路城", r: "ひめじじょう", n: "世界文化遺産。" },
+        ]
+      },
+      {
+        id: "kijutsu",
+        name: "✏️ 記述問題",
+        cards: [
+          { q: "地球温暖化が進む原因について、代表的な原因物質をあげて簡単に答えなさい。", a: "石油や石炭などの化石燃料の使用がふえたり、森林が減少したりして、二酸化炭素などの温室効果ガスが増加したから。", r: "", n: "「化石燃料」「森林の減少」「二酸化炭素（温室効果ガス）」をキーワードに書こう。", long: true },
+        ]
+      },
+    ]
+  },
+];
+
+// ===== 状態 =====
+const STORE_KEY = "chiri_flashcards";
+let era = null;
+let DECKS = [];
+let mastered = loadMastered();
+let shuffle = true;
+let reverse = false;
+let currentDeckIds = [];
+let queue = [];
+let idx = 0;
+let ngList = [];
+let okCount = 0;
+
+function loadMastered() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveMastered() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(mastered)); } catch (e) {}
+}
+function cardKey(deckId, i, eraId) { return (eraId || era.id) + ":" + deckId + ":" + i; }
+
+const $ = id => document.getElementById(id);
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $(id).classList.add("active");
+  window.scrollTo(0, 0);
+}
+
+// ===== 単元（章）選択 =====
+function renderEras() {
+  const box = $("eras");
+  box.innerHTML = "";
+  ERAS.forEach(e => {
+    const total = e.decks.reduce((s, d) => s + d.cards.length, 0);
+    const done = e.decks.reduce((s, d) => s + d.cards.filter((_, i) => mastered[cardKey(d.id, i, e.id)]).length, 0);
+    const b = document.createElement("button");
+    b.className = "deck-btn";
+    const badge = done === total ? "✅ 全部覚えた" : `覚えた ${done}/${total}`;
+    b.innerHTML = `<div><div class="name">${e.name}</div><div class="info">${total}枚・${e.source}</div></div><div class="badge">${badge}</div>`;
+    b.onclick = () => selectEra(e);
+    box.appendChild(b);
+  });
+}
+function selectEra(e) {
+  era = e;
+  DECKS = e.decks;
+  $("eraTitle").textContent = e.name;
+  renderHome();
+  show("home");
+}
+
+// ===== 単元選択 =====
+function renderHome() {
+  const box = $("decks");
+  box.innerHTML = "";
+  const allCount = DECKS.reduce((s, d) => s + d.cards.length, 0);
+  const allDone = DECKS.reduce((s, d) => s + d.cards.filter((_, i) => mastered[cardKey(d.id, i)]).length, 0);
+  box.appendChild(deckButton("🌟 ぜんぶ", allCount + "枚", allDone, allCount, DECKS.map(d => d.id), true));
+  DECKS.forEach(d => {
+    const done = d.cards.filter((_, i) => mastered[cardKey(d.id, i)]).length;
+    box.appendChild(deckButton(d.name, d.cards.length + "枚", done, d.cards.length, [d.id]));
+  });
+}
+function deckButton(name, info, done, total, ids, isAll) {
+  const b = document.createElement("button");
+  b.className = "deck-btn" + (isAll ? " all" : "");
+  const badge = done === total ? "✅ 全部覚えた" : `覚えた ${done}/${total}`;
+  b.innerHTML = `<div><div class="name">${name}</div><div class="info">${info}</div></div><div class="badge">${badge}</div>`;
+  b.onclick = () => start(ids);
+  return b;
+}
+
+// ===== 学習 =====
+function start(deckIds, onlyCards) {
+  currentDeckIds = deckIds;
+  queue = onlyCards || deckIds.flatMap(id => {
+    const d = DECKS.find(x => x.id === id);
+    return d.cards.map((c, i) => ({ ...c, key: cardKey(id, i), deck: d.name }));
+  });
+  if (shuffle) queue = shuffled(queue);
+  idx = 0; ngList = []; okCount = 0;
+  show("study");
+  renderCard();
+}
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function renderCard() {
+  const c = queue[idx];
+  const card = $("card");
+  card.classList.remove("flipped");
+  $("judge").classList.remove("show");
+  $("flipBtn").classList.remove("hide");
+  $("count").textContent = `${idx + 1} / ${queue.length}`;
+  $("barFill").style.width = (idx / queue.length * 100) + "%";
+  $("frontTag").textContent = c.deck;
+
+  const useReverse = reverse && !c.long;
+  // うら返しアニメ中に中身が見えないよう少し待って差しかえ
+  setTimeout(() => {
+    $("frontText").innerHTML = esc(useReverse ? c.a : c.q).replace(/\n/g, "<br>");
+    $("frontText").style.fontSize = useReverse ? "2rem" : "";
+    $("frontText").style.fontWeight = useReverse ? "bold" : "";
+    $("backText").innerHTML = esc(useReverse ? c.q : c.a).replace(/\n/g, "<br>");
+    $("backText").style.fontSize = (useReverse || c.long) ? "1.15rem" : "";
+    $("backRuby").textContent = useReverse ? "" : (c.r || "");
+    $("backNote").textContent = c.n ? "📖 " + c.n : "";
+    $("backGoro").textContent = c.g ? "🎵 語呂：" + c.g : "";
+    $("backGoro").style.display = c.g ? "" : "none";
+    if (useReverse) $("backNote").textContent = "（" + c.a + (c.r ? "：" + c.r : "") + "）  📖 " + c.n;
+  }, card.classList.contains("flipped") ? 250 : 0);
+}
+function esc(s) {
+  return s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+function flip() {
+  const card = $("card");
+  card.classList.toggle("flipped");
+  if (card.classList.contains("flipped")) {
+    $("judge").classList.add("show");
+    $("flipBtn").classList.add("hide");
+  }
+}
+function judge(ok) {
+  const c = queue[idx];
+  if (ok) { okCount++; mastered[c.key] = true; }
+  else { ngList.push(c); delete mastered[c.key]; }
+  saveMastered();
+  idx++;
+  if (idx >= queue.length) showResult();
+  else {
+    $("card").classList.remove("flipped");
+    setTimeout(renderCard, 250);
+  }
+}
+
+// ===== 結果 =====
+function showResult() {
+  const total = queue.length;
+  const rate = Math.round(okCount / total * 100);
+  $("resultScore").textContent = `${okCount} / ${total}`;
+  $("resultSub").textContent = `覚えた率 ${rate}%`;
+  $("resultMsg").textContent =
+    rate === 100 ? "🎉 パーフェクト！すごい！" :
+    rate >= 80 ? "👏 よくできました！あと少し！" :
+    rate >= 50 ? "💪 いい調子！「まだ」をもう一度やろう" :
+    "📚 くり返して覚えよう！";
+  const rv = $("review");
+  if (ngList.length) {
+    rv.innerHTML = "<h2>😣 まだのカード</h2>" + ngList.map(c =>
+      `<div class="review-item"><div class="rq">${esc(c.q).replace(/\n/g, "<br>")}</div><div class="ra">→ ${esc(c.a)}</div>${c.g ? `<div style="color:#a85a00;font-size:.9rem;margin-top:2px">🎵 ${esc(c.g)}</div>` : ""}</div>`
+    ).join("");
+  } else rv.innerHTML = "";
+  $("retryNgBtn").style.display = ngList.length ? "" : "none";
+  show("result");
+}
+
+// ===== イベント =====
+$("card").onclick = flip;
+$("flipBtn").onclick = flip;
+$("okBtn").onclick = () => judge(true);
+$("ngBtn").onclick = () => judge(false);
+$("quitBtn").onclick = () => { renderHome(); show("home"); };
+$("homeBtn").onclick = () => { renderHome(); show("home"); };
+$("retryAllBtn").onclick = () => start(currentDeckIds);
+$("retryNgBtn").onclick = () => start(currentDeckIds, ngList.slice());
+$("shuffleToggle").onclick = e => { shuffle = !shuffle; e.currentTarget.classList.toggle("on", shuffle); };
+$("reverseToggle").onclick = e => { reverse = !reverse; e.currentTarget.classList.toggle("on", reverse); };
+$("eraBackBtn").onclick = () => { renderEras(); show("eraScreen"); };
+$("resetBtn").onclick = () => {
+  if (!confirm(era.name + "の覚えた記録をリセットしますか？")) return;
+  Object.keys(mastered).forEach(k => { if (k.startsWith(era.id + ":")) delete mastered[k]; });
+  saveMastered();
+  renderHome();
+};
+
+renderEras();
+</script>
+</body>
+</html>
